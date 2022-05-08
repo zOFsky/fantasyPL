@@ -7,8 +7,9 @@ library(lpSolve)
 # max 3 from 1 club
 # captaincy
 
-data <- fread("data/players_raw.csv")[, .(web_name, team, total_points, 
-                                          now_cost, position = element_type)]
+data <- fread("data/players_raw22.csv")[, .(web_name, team, total_points, 
+                                            now_cost, position = element_type)]
+#data[433, now_cost := 150]
 data[, `:=`(team = as.factor(team),
             position = as.factor(position))]
 
@@ -17,39 +18,58 @@ for(team in unique(data$team)){
   team_constr <- c(team_constr, data$team == team)
 }
 pos_constr <- c()
-for(pos in unique(data$position)){
+for(pos in levels(data$position)){
   pos_constr <- c(pos_constr, data$position == pos)
 }
 
 squad <- rep(1, nrow(data))
 captain <- rep(1, nrow(data))
-obj <- data$total_points
+#obj <- data$total_points
 
 constr <- matrix(
   c(data$now_cost,                  # budget
-    squad > 0,             # teamsize
+    squad,             # teamsize
     team_constr,                    # 20x club constraint
     pos_constr,                     # 4 position
     pos_constr                     # 4 position
-    ),                   # captain
+  ),                   # captain
   byrow = TRUE, nrow = 30
 )
 const_direction <- c("<=",                        #budget
                      "==",                        # teamsize 
                      rep("<=", 20),               # 20x club constr
-                     "<=", "<=","<=","<=",        # 4 position less than
-                     ">=", ">=", ">=", "=="      # 4 position at least
-                     )                        # captain
+                     "==", "<=","<=","<=",        # 4 position less than
+                     "==", ">=", ">=", ">="      # 4 position at least
+)                        # captain
 rhs <- c(830, 
          11, 
          rep(3, 20), 
-         5, 5, 3, 1, 
-         2, 3, 1, 1
-         )
+         1, 5, 5, 3, 
+         1, 3, 2, 1
+)
 
-result <- lp("max", obj, constr,const_direction, rhs, all.bin = TRUE)
 
-data$result <- result$solution
-answer <- data[result != 0 , .(web_name, total_points, team, position, 
-                              now_cost = now_cost/10)]
+res <- vector("list", nrow(data))
+for(i in seq_len(nrow(data))){
+  
+  #cat("iter:", i, "\n")
+  
+  obj <- data$total_points
+  obj[[i]] <- obj[[i]] * 2
+  
+  res[[i]] <- lp("max", obj, constr, const_direction, rhs, all.bin = TRUE)
+}
+
+captain_index <- which.max(unlist(lapply(res, function(x) x$objval)))
+print(data[res[[captain_index]]$solution == 1,])
+print(sum(data[res[[captain_index]]$solution == 1,]$total_points))
+answer <- data[res[[captain_index]]$solution == 1,]
+
+
+
+
+
+
+
+
 
